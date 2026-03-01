@@ -1,0 +1,78 @@
+import os
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from tensorflow.keras.models import Model
+import matplotlib.pyplot as plt
+
+# 1. Setup Paths (Point this to your extracted Food-101 folder)
+DATASET_PATH = 'food-101/images' 
+IMG_SIZE = (128, 128) # Resizing for faster training
+BATCH_SIZE = 32
+
+# 2. Data Augmentation & Loading
+# We use validation_split to create a training and test set automatically
+datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    horizontal_flip=True,
+    validation_split=0.2 
+)
+
+train_generator = datagen.flow_from_directory(
+    DATASET_PATH,
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='training'
+)
+
+val_generator = datagen.flow_from_directory(
+    DATASET_PATH,
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='validation'
+)
+
+# 3. Build the Model using Transfer Learning
+base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(128, 128, 3))
+base_model.trainable = False # Freeze the pre-trained weights
+
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = Dense(512, activation='relu')(x)
+predictions = Dense(101, activation='softmax')(x) # 101 classes for Food-101
+
+model = Model(inputs=base_model.input, outputs=predictions)
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# 4. Train the Model (Running 3-5 epochs is enough to show it works)
+print("Training on Food-101...")
+history = model.fit(train_generator, epochs=5, validation_data=val_generator)
+
+# 5. Calorie Estimation Logic
+# Example calorie mapping (Calories per 100g)
+calorie_dict = {
+    "apple_pie": 237, "baby_back_ribs": 292, "baklava": 434, "beef_carpaccio": 119,
+    "beef_tartare": 176, "beet_salad": 43, "beignets": 402, "bibimbap": 141,
+    "bread_pudding": 153, "breakfast_burrito": 232, "bruschetta": 204, "caesar_salad": 44,
+    # ... You would expand this for all 101 classes
+}
+
+# 6. Prediction Function
+def estimate_calories(img_path):
+    img = tf.keras.preprocessing.image.load_img(img_path, target_size=IMG_SIZE)
+    img_array = tf.keras.preprocessing.image.img_to_array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+    
+    pred = model.predict(img_array)
+    class_idx = np.argmax(pred)
+    food_name = list(train_generator.class_indices.keys())[class_idx]
+    
+    calories = calorie_dict.get(food_name, "Data not available")
+    
+    plt.imshow(img)
+    plt.title(f"Item: {food_
