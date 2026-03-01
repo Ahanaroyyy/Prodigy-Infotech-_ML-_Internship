@@ -1,0 +1,77 @@
+import os
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
+
+# 1. Configuration
+# Path to the folder containing your 'train' images from Kaggle
+DATADIR = "train" 
+IMG_SIZE = 50  # Smaller size helps the SVM process faster
+LIMIT = 2000   # Total images to use (1000 dogs, 1000 cats) to prevent memory crashes
+
+def load_data():
+    features = []
+    labels = []
+    
+    # Kaggle filenames are like 'dog.1.jpg' or 'cat.5.jpg'
+    count_dog = 0
+    count_cat = 0
+    
+    files = os.listdir(DATADIR)
+    for img in files:
+        try:
+            label = img.split('.') # Get 'dog' or 'cat'
+            if label == 'dog' and count_dog < LIMIT // 2:
+                class_num = 0
+                count_dog += 1
+            elif label == 'cat' and count_cat < LIMIT // 2:
+                class_num = 1
+                count_cat += 1
+            else:
+                continue
+
+            # Read, Grayscale, and Resize
+            img_path = os.path.join(DATADIR, img)
+            img_array = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+            resized_array = cv2.resize(img_array, (IMG_SIZE, IMG_SIZE))
+            
+            # Flatten to a 1D array (50x50 = 2500 features)
+            features.append(resized_array.flatten())
+            labels.append(class_num)
+            
+        except Exception as e:
+            pass
+            
+    return np.array(features), np.array(labels)
+
+# 2. Prepare Data
+print("Loading images...")
+X, y = load_data()
+
+# Normalize pixels (0-255 -> 0-1)
+X = X / 255.0
+
+# Split into Training and Testing
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 3. Train the SVM
+# 'rbf' kernel is generally the best choice for non-linear image data
+print(f"Training SVM on {len(X_train)} images... Please wait.")
+svm_model = SVC(kernel='rbf', C=1.0, gamma='scale')
+svm_model.fit(X_train, y_train)
+
+# 4. Evaluation
+y_pred = svm_model.predict(X_test)
+
+print("\n--- Model Results ---")
+print(f"Accuracy: {accuracy_score(y_test, y_pred) * 100:.2f}%")
+print(classification_report(y_test, y_pred, target_names=['Dog', 'Cat']))
+
+# 5. Quick Test: Visualize one prediction
+plt.imshow(X_test.reshape(IMG_SIZE, IMG_SIZE), cmap='gray')
+plt.title(f"Predicted: {'Dog' if y_pred == 0 else 'Cat'}")
+plt.axis('off')
+plt.show()
